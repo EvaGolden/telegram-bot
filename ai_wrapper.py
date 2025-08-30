@@ -1,8 +1,12 @@
 # ai_wrapper.py
+import os
 from google import genai
 
-# Initialize client with your API key
-client = genai.Client(api_key="YOUR_API_KEY_HERE")
+# Get API key from environment variables
+API_KEY = os.getenv("GOOGLE_API_KEY")
+
+# Initialize Gemini client
+client = genai.Client(api_key=API_KEY)
 
 def normal_ai_response(user_message: str) -> str:
     """
@@ -10,7 +14,7 @@ def normal_ai_response(user_message: str) -> str:
     """
     try:
         response = client.models.generate_content(
-            model="gemini-1.5-flash",   # You can change to "gemini-1.5-pro" if you have access
+            model="gemini-1.5-flash",   # Change to "gemini-1.5-pro" if needed
             contents=user_message
         )
         return response.text.strip()
