@@ -1,48 +1,38 @@
 import os
 import logging
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-import openai
-
-# Get API keys from Railway Variables
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # Your Telegram bot token from Railway
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # OpenAI API key
-
-# Configure OpenAI
-openai.api_key = OPENAI_API_KEY
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+import google.generativeai as genai
 
 # Enable logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
-# Start command
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hello 👋 I'm your AI friend bot! Send me anything and I'll reply 😊")
+# Set up Gemini
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-# Handle normal text messages
-async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def start(update, context):
+    update.message.reply_text("Hey 👋 I’m your Gemini-powered friend bot. Talk to me!")
+
+def chat(update, context):
     user_message = update.message.text
-
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": user_message}]
-        )
-        bot_reply = response["choices"][0]["message"]["content"]
-        await update.message.reply_text(bot_reply)
-
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(user_message)
+        reply = response.text if response.text else "😅 I couldn’t generate a reply."
+        update.message.reply_text(reply)
     except Exception as e:
-        await update.message.reply_text("Oops 😅 something went wrong.")
-        logging.error(e)
+        update.message.reply_text("⚠️ Error: " + str(e))
 
 def main():
-    application = Application.builder().token(BOT_TOKEN).build()
+    updater = Updater(os.getenv("TELEGRAM_TOKEN"), use_context=True)
+    dp = updater.dispatcher
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, chat))
 
-    application.run_polling()
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == "__main__":
     main()
