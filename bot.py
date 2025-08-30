@@ -1,4 +1,3 @@
-# bot.py
 from ai_wrapper import normal_ai_response
 from apscheduler.schedulers.background import BackgroundScheduler
 import time
@@ -13,31 +12,34 @@ def scheduled_check_in():
 def run_chat():
     print("🤖 Alexi is online! (type 'quit' to exit)\n")
 
-    # Start scheduler for check-ins every 30 minutes
+    # Start scheduler for check-ins every 1 hour (example)
     scheduler = BackgroundScheduler()
-    scheduler.add_job(scheduled_check_in, 'interval', minutes=30)
+    scheduler.add_job(scheduled_check_in, 'interval', hours=1)
     scheduler.start()
 
     try:
         while True:
             user_message = input("You: ")
-
+            
             if user_message.lower() in ["quit", "exit", "bye"]:
-                print("🤖 Alexi: 👋 Alright, take care! Talk soon 😌")
+                print("Alexi: 👋 Alright, take care!")
                 break
 
-            # Add user message to history
-            conversation_history.append({"role": "user", "content": user_message})
+            # Remember conversation
+            conversation_history.append({"user": user_message})
 
             # Get AI response
             reply = normal_ai_response(user_message)
-            print(f"🤖 Alexi: {reply}\n")
 
-            # Add AI reply to history
-            conversation_history.append({"role": "ai", "content": reply})
+            # Add a little joke/emoji randomly
+            if "tired" in user_message.lower():
+                reply += " 😴 Maybe take a small break, even bots recommend it!"
 
+            conversation_history.append({"alexi": reply})
+            print(f"Alexi: {reply}\n")
+    except KeyboardInterrupt:
+        print("\nAlexi: Bye! Stay awesome 😎")
     finally:
-        # Make sure scheduler shuts down cleanly
         scheduler.shutdown()
 
 if __name__ == "__main__":
