@@ -1,19 +1,46 @@
-from google import genai
-import os
+# bot.py
+from ai_wrapper import normal_ai_response
+from apscheduler.schedulers.background import BackgroundScheduler
+import time
 
-# Initialize client with your Google API key from environment variable
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")  # Safer than hardcoding
-client = genai.Client(api_key=GOOGLE_API_KEY)
+# ----------------------
+# Scheduled tasks
+# ----------------------
+def scheduled_check_in():
+    print("\n🤖 Alexi: Hey! Just checking in 🌟 How's your day going?\n")
 
-def normal_ai_response(user_message: str) -> str:
-    """
-    Sends user input to Gemini and returns the AI's response text.
-    """
+# ----------------------
+# Main chat loop
+# ----------------------
+def run_chat():
+    print("🤖 Alexi is online! (type 'quit' to exit)\n")
+
+    # Start background scheduler
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(scheduled_check_in, 'interval', minutes=1)  # every 1 min (adjust later)
+    scheduler.start()
+
     try:
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=user_message
-        )
-        return response.text.strip()
-    except Exception as e:
-        return f"⚠️ Oops, something went wrong: {e}"
+        while True:
+            user_message = input("You: ")
+
+            if user_message.lower() in ["quit", "exit", "bye"]:
+                print("Alexi: 👋 Alright, take care! Stay awesome ✨")
+                break
+
+            # AI Response
+            reply = normal_ai_response(user_message)
+
+            # Add emoji flair
+            enhanced_reply = f"{reply} 😄" if not reply.startswith("⚠️") else reply
+
+            print(f"Alexi: {enhanced_reply}\n")
+            time.sleep(0.2)
+
+    except KeyboardInterrupt:
+        print("\nAlexi: 📴 Chat ended.")
+    finally:
+        scheduler.shutdown()
+
+if __name__ == "__main__":
+    run_chat()
