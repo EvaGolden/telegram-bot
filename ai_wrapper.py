@@ -1,46 +1,28 @@
-# bot.py
-from ai_wrapper import normal_ai_response
-from apscheduler.schedulers.background import BackgroundScheduler
-import time
+# ai_wrapper.py
+import google.generativeai as genai
+import os
 
-# ----------------------
-# Scheduled tasks
-# ----------------------
-def scheduled_check_in():
-    print("\n🤖 Alexi: Hey! Just checking in 🌟 How's your day going?\n")
+# Load API key (set this as an environment variable in your system or hosting platform)
+API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# ----------------------
-# Main chat loop
-# ----------------------
-def run_chat():
-    print("🤖 Alexi is online! (type 'quit' to exit)\n")
+# Configure Gemini client
+genai.configure(api_key=API_KEY)
 
-    # Start background scheduler
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(scheduled_check_in, 'interval', minutes=1)  # every 1 min (adjust later)
-    scheduler.start()
-
+def normal_ai_response(user_message: str) -> str:
+    """
+    Sends user input to Gemini and returns the AI's response text.
+    """
     try:
-        while True:
-            user_message = input("You: ")
+        model = genai.GenerativeModel("gemini-1.5-flash")  # Or "gemini-1.5-pro"
+        response = model.generate_content(user_message)
 
-            if user_message.lower() in ["quit", "exit", "bye"]:
-                print("Alexi: 👋 Alright, take care! Stay awesome ✨")
-                break
+        # Gemini responses are structured, so extract text safely
+        if hasattr(response, "text") and response.text:
+            return response.text.strip()
+        elif hasattr(response, "candidates") and response.candidates:
+            return response.candidates[0].content.parts[0].text.strip()
+        else:
+            return "🤔 Sorry, I didn’t quite get that."
 
-            # AI Response
-            reply = normal_ai_response(user_message)
-
-            # Add emoji flair
-            enhanced_reply = f"{reply} 😄" if not reply.startswith("⚠️") else reply
-
-            print(f"Alexi: {enhanced_reply}\n")
-            time.sleep(0.2)
-
-    except KeyboardInterrupt:
-        print("\nAlexi: 📴 Chat ended.")
-    finally:
-        scheduler.shutdown()
-
-if __name__ == "__main__":
-    run_chat()
+    except Exception as e:
+        return f"⚠️ Oops, something went wrong: {e}"
