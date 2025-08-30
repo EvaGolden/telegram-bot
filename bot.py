@@ -1,27 +1,48 @@
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import os
+import logging
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import openai
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # Load token from Railway environment variable
+# Get API keys from Railway Variables
+BOT_TOKEN = os.getenv("BOT_TOKEN")  # Your Telegram bot token from Railway
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # OpenAI API key
 
-def start(update, context):
-    update.message.reply_text("👋 Hello! Your Railway bot is alive.")
+# Configure OpenAI
+openai.api_key = OPENAI_API_KEY
 
-def help_command(update, context):
-    update.message.reply_text("Here are my commands:\n/start - Welcome\n/help - Show this message")
+# Enable logging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 
-def echo(update, context):
-    update.message.reply_text(update.message.text)
+# Start command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Hello 👋 I'm your AI friend bot! Send me anything and I'll reply 😊")
+
+# Handle normal text messages
+async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_message = update.message.text
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": user_message}]
+        )
+        bot_reply = response["choices"][0]["message"]["content"]
+        await update.message.reply_text(bot_reply)
+
+    except Exception as e:
+        await update.message.reply_text("Oops 😅 something went wrong.")
+        logging.error(e)
 
 def main():
-    updater = Updater(BOT_TOKEN, use_context=True)
-    dp = updater.dispatcher
+    application = Application.builder().token(BOT_TOKEN).build()
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("help", help_command))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
