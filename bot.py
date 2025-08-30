@@ -1,38 +1,60 @@
 import os
-import logging
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import google.generativeai as genai
+from telegram import Update
+from telegram.ext import Application, MessageHandler, filters, ContextTypes
 
-# Enable logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+# Load keys
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-# Set up Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# Configure Gemini
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel("gemini-1.5-flash")  # Fast & good for chatbots
 
-def start(update, context):
-    update.message.reply_text("Hey 👋 I’m your Gemini-powered friend bot. Talk to me!")
 
-def chat(update, context):
-    user_message = update.message.text
+# Handle messages
+async def respond(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_message = update.message.text.lower()
+
+    # Friendly custom replies
+    if "hi" in user_message or "hello" in user_message:
+        await update.message.reply_text(
+            f"Hey {update.effective_user.first_name}! 👋 How’s your day going?"
+        )
+        return
+
+    elif "bye" in user_message:
+        await update.message.reply_text("Catch you later! Take care ✌️")
+        return
+
+    elif "how are you" in user_message:
+        await update.message.reply_text("I’m doing great 😎 Thanks for asking! What about you?")
+        return
+
+    # For everything else, use Gemini
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content(user_message)
-        reply = response.text if response.text else "😅 I couldn’t generate a reply."
-        update.message.reply_text(reply)
+        response = model.generate_content(
+            f"You are a friendly chatbot who chats casually like a human friend. User said: {user_message}"
+        )
+        reply = response.text.strip()
+        await update.message.reply_text(reply)
+
     except Exception as e:
-        update.message.reply_text("⚠️ Error: " + str(e))
+        await update.message.reply_text("Oops 😅 something went wrong with Gemini.")
+
 
 def main():
-    updater = Updater(os.getenv("TELEGRAM_TOKEN"), use_context=True)
-    dp = updater.dispatcher
+    if not TELEGRAM_TOKEN:
+        raise ValueError("TELEGRAM_TOKEN is missing! Set it in Railway variables.")
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY is missing! Set it in Railway variables.")
 
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, chat))
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, respond))
 
-    updater.start_polling()
-    updater.idle()
+    print("Bot is running with Gemini 🚀")
+    app.run_polling()
+
 
 if __name__ == "__main__":
     main()
