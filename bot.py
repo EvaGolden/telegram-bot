@@ -1,84 +1,179 @@
 import os
+import re
+import random
 import logging
 import google.generativeai as genai
-from telegram.ext import Updater, MessageHandler, Filters, CommandHandler
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
-# Logging for debugging
+# -------- Logging --------
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
+log = logging.getLogger("companion-bot")
 
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# -------- API Keys --------
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")    # set this in Railway
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")    # set this in Railway
 
-# Rewrite Gemini response into human-like, short, emoji-friendly reply
-def humanize_reply(original, user_message):
-    # Make response shorter
-    if len(original.split()) > 25:  # If too long, cut it down
-        original = " ".join(original.split()[:25]) + "..."
+if not TELEGRAM_TOKEN:
+    raise ValueError("TELEGRAM_TOKEN is missing (Railway Variables).")
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY is missing (Railway Variables).")
 
-    # Add emojis if emotional
-    emojis = {
-        "tired": "😞",
-        "happy": "😊",
-        "sad": "😔",
-        "angry": "😡",
-        "love": "❤️",
-        "stress": "😥",
-        "work": "💼",
-        "friend": "🤝",
-    }
+# -------- Gemini --------
+genai.configure(api_key=GEMINI_API_KEY)
+gemini_model = genai.GenerativeModel("gemini-pro")  # solid + widely available
 
-    emoji = ""
-    for word, emo in emojis.items():
-        if word in user_message.lower():
-            emoji = emo
-            break
+# -------- Intent / Mood Dictionaries --------
+EMO_WORDS = {
+    "tired": "😞", "exhausted": "😞", "stressed": "😥", "burnt": "😥", "sad": "😔",
+    "down": "😔", "lonely": "😔", "anxious": "😟", "angry": "😤", "frustrated": "😤",
+    "heartbroken": "💔", "breakup": "💔", "love": "❤️", "crush": "😊", "happy": "😄"
+}
+SERIOUS_WORDS = [
+    "job","work","cv","resume","assignment","exam","deadline","proposal","report",
+    "application","interview","school","university","project","finance","budget"
+]
+CLOSERS = ["bye","goodbye","good night","goodnight","gtg","talk later","thanks","thank you","tnx","appreciate"]
 
-    # Add a reflective question
-    followups = [
-        "What do you think caused that?",
-        "How does that make you feel?",
-        "Do you want to talk more about it?",
-        "What’s on your mind right now?",
-        "How are you coping with it?",
+# -------- Small helpers --------
+def is_serious(text: str) -> bool:
+    t = text.lower()
+    return any(w in t for w in SERIOUS_WORDS)
+
+def pick_emoji(text: str) -> str:
+    t = text.lower()
+    for w, emo in EMO_WORDS.items():
+        if w in t:
+            return emo
+    return ""  # no emoji if none detected
+
+def is_closing(text: str) -> bool:
+    t = text.lower()
+    return any(c in t for c in CLOSERS)
+
+def short_clean(s: str, max_chars: int = 200) -> str:
+    s = re.sub(r"\s+", " ", s).strip()
+    if len(s) > max_chars:
+        s = s[:max_chars].rstrip() + "…"
+    # enforce max 2 sentences
+    parts = re.split(r"(?<=[.!?])\s+", s)
+    return " ".join(parts[:2]).strip()
+
+# Build a short, human reply that always invites the user to continue
+def craft_reply(user_text: str, gemini_hint: str) -> str:
+    serious = is_serious(user_text)
+    closing = is_closing(user_text)
+
+    # Base acknowledgement lines (vary by mood)
+    emo = pick_emoji(user_text) if not serious else ""
+    ack_pool_emotional = [
+        f"I feel you {emo}",
+        f"Ahh, that’s a lot {emo}",
+        f"I get how that can weigh on you {emo}",
+        f"Omo, I hear you {emo}",
+        f"That sounds tough {emo}",
+    ]
+    ack_pool_serious = [
+        "Got it.",
+        "Okay, noted.",
+        "Understood.",
+        "Makes sense.",
+        "I see."
     ]
 
-    import random
-    followup = random.choice(followups)
+    # Follow-up questions (guided, short, open)
+    followups_emotional = [
+        "What do you think started it?",
+        "Where do you feel it most—mind or body?",
+        "Wanna tell me what happened today?",
+        "What’s the part that hurts most?",
+        "What would help a little right now?"
+    ]
+    followups_serious = [
+        "What’s the exact goal or deadline?",
+        "Where are you stuck exactly?",
+        "What have you tried so far?",
+        "What’s the toughest part here?",
+        "What would a ‘win’ look like for you?"
+    ]
 
-    # Combine into final human-like reply
-    return f"{original} {emoji}\n\n{followup}"
+    # Choose pools
+    ack = random.choice(ack_pool_serious if serious else ack_pool_emotional)
 
-# Handle start command
-def start(update, context):
-    update.message.reply_text("Hey 👋 I’m your companion bot. How are you feeling today?")
+    # Use Gemini only as a hint (never dump it raw)
+    hint = short_clean(gemini_hint, max_chars=120)
+    # If hint is empty or too generic, ignore it
+    if not hint or len(hint.split()) < 3:
+        hint = ""
 
-# Handle normal messages
-def chat(update, context):
-    user_message = update.message.text
+    # Build final text
+    if closing:
+        # Warm close, no question
+        closers = [
+            "Anytime. Take care.",
+            "Appreciate you. Talk soon.",
+            "Alright then. Rest well.",
+            "Got you. I’m here when you need me.",
+        ]
+        return random.choice(closers)
+
+    # Compose: acknowledgement (+ optional tiny hint) + one short follow-up question
+    follow = random.choice(followups_serious if serious else followups_emotional)
+
+    if serious:
+        base = ack if not hint else f"{ack} {hint}"
+        reply = f"{short_clean(base)} {follow}"
+    else:
+        # add a tiny bit of warmth when casual/emotional
+        base = ack if not hint else f"{ack} {hint}"
+        reply = f"{short_clean(base)} {follow}"
+
+    # Make sure it's at most 2 sentences. If more, trim.
+    parts = re.split(r"(?<=[.!?])\s+", reply)
+    if len(parts) > 2:
+        reply = " ".join(parts[:2])
+
+    return reply.strip()
+
+# -------- Telegram Handlers --------
+def start(update: Update, context: CallbackContext):
+    greetings = [
+        "Hey 👋 how are you feeling today?",
+        "Yo! 👋 what’s on your mind?",
+        "Heyy 👋 I’m here. Talk to me.",
+    ]
+    update.message.reply_text(random.choice(greetings))
+
+def chat(update: Update, context: CallbackContext):
+    user_text = update.message.text or ""
 
     try:
-        model = genai.GenerativeModel("gemini-pro")
-        response = model.generate_content(user_message)
-
-        # Humanize Gemini’s response
-        bot_reply = humanize_reply(response.text, user_message)
-
-        update.message.reply_text(bot_reply)
+        # We ask Gemini for a VERY short hint (we won’t send it directly)
+        prompt = (
+            "Give a super short, plain-language gist (1 sentence, <=15 words) of the user's message. "
+            "No advice, no lists, no questions—just the gist."
+        )
+        g = gemini_model.generate_content(f"{prompt}\n\nUser: {user_text}")
+        gemini_hint = (g.text or "").strip() if g else ""
 
     except Exception as e:
-        logging.error(f"Error: {e}")
-        update.message.reply_text("Oops 😅 I couldn’t process that. Want to try again?")
+        log.warning(f"Gemini hint error: {e}")
+        gemini_hint = ""
+
+    # Build the final human-style reply
+    final = craft_reply(user_text, gemini_hint)
+    update.message.reply_text(final)
 
 def main():
-    updater = Updater(os.getenv("TELEGRAM_TOKEN"), use_context=True)
+    updater = Updater(TELEGRAM_TOKEN, use_context=True)
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(MessageHandler(Filters.text & ~Filters.command, chat))
 
+    log.info("Companion bot running ✅")
     updater.start_polling()
     updater.idle()
 
