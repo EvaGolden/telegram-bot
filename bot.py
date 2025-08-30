@@ -18,28 +18,27 @@ def run_chat():
     scheduler.add_job(scheduled_check_in, 'interval', minutes=30)
     scheduler.start()
 
-    while True:
-        user_message = input("You: ")
+    try:
+        while True:
+            user_message = input("You: ")
 
-        if user_message.lower() in ["quit", "exit", "bye"]:
-            print("🤖 Alexi: 👋 Alright, take care! Talk soon 😌")
-            scheduler.shutdown()
-            break
+            if user_message.lower() in ["quit", "exit", "bye"]:
+                print("🤖 Alexi: 👋 Alright, take care! Talk soon 😌")
+                break
 
-        # Add user message to history
-        conversation_history.append({"role": "user", "content": user_message})
+            # Add user message to history
+            conversation_history.append({"role": "user", "content": user_message})
 
-        # Get AI response (using conversation history)
-        try:
+            # Get AI response
             reply = normal_ai_response(user_message)
-        except Exception as e:
-            reply = f"⚠️ Oops, something went wrong: {e}"
+            print(f"🤖 Alexi: {reply}\n")
 
-        # Add AI reply to history
-        conversation_history.append({"role": "assistant", "content": reply})
+            # Add AI reply to history
+            conversation_history.append({"role": "ai", "content": reply})
 
-        # Print reply with emojis
-        print(f"🤖 Alexi: {reply} 😄\n")
+    finally:
+        # Make sure scheduler shuts down cleanly
+        scheduler.shutdown()
 
 if __name__ == "__main__":
     run_chat()
