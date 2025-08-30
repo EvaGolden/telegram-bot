@@ -1,44 +1,44 @@
+# bot.py
 from ai_wrapper import normal_ai_response
 from apscheduler.schedulers.background import BackgroundScheduler
 import time
 
-# Store conversation history
-conversation_history = []
-
-# Function for scheduled check-in
+# ----------------------
+# Scheduled tasks
+# ----------------------
 def scheduled_check_in():
-    print("\n🤖 Alexi: Hey! Just checking in 😄 How's your day going?\n")
+    print("\n🤖 Alexi: Hey! Just checking in 🌟 How's your day going?\n")
 
+# ----------------------
+# Main chat loop
+# ----------------------
 def run_chat():
     print("🤖 Alexi is online! (type 'quit' to exit)\n")
 
-    # Start scheduler for check-ins every 1 hour (example)
+    # Start background scheduler
     scheduler = BackgroundScheduler()
-    scheduler.add_job(scheduled_check_in, 'interval', hours=1)
+    scheduler.add_job(scheduled_check_in, 'interval', minutes=1)  # every 1 min (adjust later)
     scheduler.start()
 
     try:
         while True:
             user_message = input("You: ")
-            
+
             if user_message.lower() in ["quit", "exit", "bye"]:
-                print("Alexi: 👋 Alright, take care!")
+                print("Alexi: 👋 Alright, take care! Stay awesome ✨")
                 break
 
-            # Remember conversation
-            conversation_history.append({"user": user_message})
-
-            # Get AI response
+            # AI Response
             reply = normal_ai_response(user_message)
 
-            # Add a little joke/emoji randomly
-            if "tired" in user_message.lower():
-                reply += " 😴 Maybe take a small break, even bots recommend it!"
+            # Add emoji flair
+            enhanced_reply = f"{reply} 😄" if not reply.startswith("⚠️") else reply
 
-            conversation_history.append({"alexi": reply})
-            print(f"Alexi: {reply}\n")
+            print(f"Alexi: {enhanced_reply}\n")
+            time.sleep(0.2)
+
     except KeyboardInterrupt:
-        print("\nAlexi: Bye! Stay awesome 😎")
+        print("\nAlexi: 📴 Chat ended.")
     finally:
         scheduler.shutdown()
 
