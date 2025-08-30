@@ -1,71 +1,83 @@
 import os
 import logging
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 import google.generativeai as genai
+from telegram.ext import Updater, MessageHandler, Filters, CommandHandler
 
-# Logging
+# Logging for debugging
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
 )
-logger = logging.getLogger(__name__)
 
 # Configure Gemini
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-def chat_with_gemini(user_message):
+# Rewrite Gemini response into human-like, short, emoji-friendly reply
+def humanize_reply(original, user_message):
+    # Make response shorter
+    if len(original.split()) > 25:  # If too long, cut it down
+        original = " ".join(original.split()[:25]) + "..."
+
+    # Add emojis if emotional
+    emojis = {
+        "tired": "😞",
+        "happy": "😊",
+        "sad": "😔",
+        "angry": "😡",
+        "love": "❤️",
+        "stress": "😥",
+        "work": "💼",
+        "friend": "🤝",
+    }
+
+    emoji = ""
+    for word, emo in emojis.items():
+        if word in user_message.lower():
+            emoji = emo
+            break
+
+    # Add a reflective question
+    followups = [
+        "What do you think caused that?",
+        "How does that make you feel?",
+        "Do you want to talk more about it?",
+        "What’s on your mind right now?",
+        "How are you coping with it?",
+    ]
+
+    import random
+    followup = random.choice(followups)
+
+    # Combine into final human-like reply
+    return f"{original} {emoji}\n\n{followup}"
+
+# Handle start command
+def start(update, context):
+    update.message.reply_text("Hey 👋 I’m your companion bot. How are you feeling today?")
+
+# Handle normal messages
+def chat(update, context):
+    user_message = update.message.text
+
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        prompt = f"""
-        You are a supportive, friendly chatbot 🤝.
-        Rules:
-        - Reply in MAX 2 short sentences.
-        - Use emojis if it’s emotional/casual (like chatting with a friend).
-        - Skip emojis if it’s serious/formal.
-        - Be warm & relatable, not robotic.
-        - If user seems sad/tired, show empathy first then ask a gentle follow-up.
-        - If user says bye/thanks, reply warmly but don’t ask a follow-up.
+        model = genai.GenerativeModel("gemini-pro")
+        response = model.generate_content(user_message)
 
-        User: {user_message}
-        Bot:
-        """
-        response = model.generate_content(prompt)
-        reply = response.text.strip()
+        # Humanize Gemini’s response
+        bot_reply = humanize_reply(response.text, user_message)
 
-        # Safety cut: force short reply
-        sentences = reply.split(". ")
-        if len(sentences) > 2:
-            reply = ". ".join(sentences[:2]) + "."
-
-        return reply
+        update.message.reply_text(bot_reply)
 
     except Exception as e:
-        logger.error(f"Gemini error: {e}")
-        return "Oops 😅 something went wrong."
-
-# Telegram bot handlers
-def start(update: Update, context: CallbackContext):
-    update.message.reply_text("Hey 👋 I’m your friendly bot. How are you feeling today?")
-
-def handle_message(update: Update, context: CallbackContext):
-    user_message = update.message.text
-    reply = chat_with_gemini(user_message)
-    update.message.reply_text(reply)
-
-def error(update: Update, context: CallbackContext):
-    logger.warning(f"Update {update} caused error {context.error}")
+        logging.error(f"Error: {e}")
+        update.message.reply_text("Oops 😅 I couldn’t process that. Want to try again?")
 
 def main():
-    token = os.getenv("TELEGRAM_TOKEN")
-    if not token:
-        raise ValueError("TELEGRAM_TOKEN is missing. Set it in your environment variables.")
-
-    updater = Updater(token, use_context=True)
+    updater = Updater(os.getenv("TELEGRAM_TOKEN"), use_context=True)
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
-    dp.add_error_handler(error)
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, chat))
 
     updater.start_polling()
     updater.idle()
