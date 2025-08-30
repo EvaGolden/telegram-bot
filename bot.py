@@ -1,46 +1,26 @@
 # bot.py
+import os
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from ai_wrapper import normal_ai_response
-from apscheduler.schedulers.background import BackgroundScheduler
-import time
 
-# ----------------------
-# Scheduled tasks
-# ----------------------
-def scheduled_check_in():
-    print("\n🤖 Alexi: Hey! Just checking in 🌟 How's your day going?\n")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# ----------------------
-# Main chat loop
-# ----------------------
-def run_chat():
-    print("🤖 Alexi is online! (type 'quit' to exit)\n")
+async def start(update, context):
+    await update.message.reply_text("🤖 Alexi is online! Type something to chat.")
 
-    # Start background scheduler
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(scheduled_check_in, 'interval', minutes=1)  # every 1 min (adjust later)
-    scheduler.start()
+async def chat(update, context):
+    user_message = update.message.text
+    reply = normal_ai_response(user_message)
+    await update.message.reply_text(reply)
 
-    try:
-        while True:
-            user_message = input("You: ")
+def run_bot():
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-            if user_message.lower() in ["quit", "exit", "bye"]:
-                print("Alexi: 👋 Alright, take care! Stay awesome ✨")
-                break
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-            # AI Response
-            reply = normal_ai_response(user_message)
-
-            # Add emoji flair
-            enhanced_reply = f"{reply} 😄" if not reply.startswith("⚠️") else reply
-
-            print(f"Alexi: {enhanced_reply}\n")
-            time.sleep(0.2)
-
-    except KeyboardInterrupt:
-        print("\nAlexi: 📴 Chat ended.")
-    finally:
-        scheduler.shutdown()
+    print("✅ Bot is running...")
+    app.run_polling()
 
 if __name__ == "__main__":
-    run_chat()
+    run_bot()
